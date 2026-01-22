@@ -33,122 +33,59 @@ void SlamGmapping::init() {
     got_first_scan_ = false;
     got_map_ = false;
 
-    // Defaults (previous hardcoded values)
-    int def_throttle_scans = 1;
-    std::string def_base_frame = "base_link";
-    std::string def_map_frame = "map";
-    std::string def_odom_frame = "odom";
-    double def_transform_publish_period = 0.05;
-    double def_map_update_interval = 0.5; // seconds
-    double def_maxUrange = 80.0;
-    double def_maxRange = 0.0;
-    double def_minimum_score = 0;
-    double def_sigma = 0.05;
-    int def_kernelSize = 1;
-    double def_lstep = 0.05;
-    double def_astep = 0.05;
-    int def_iterations = 5;
-    double def_lsigma = 0.075;
-    double def_ogain = 3.0;
-    int def_lskip = 0;
-    double def_srr = 0.1;
-    double def_srt = 0.2;
-    double def_str = 0.1;
-    double def_stt = 0.2;
-    double def_linearUpdate = 1.0;
-    double def_angularUpdate = 0.5;
-    double def_temporalUpdate = 1.0;
-    double def_resampleThreshold = 0.5;
-    int def_particles = 30;
-    double def_xmin = -10.0;
-    double def_ymin = -10.0;
-    double def_xmax = 10.0;
-    double def_ymax = 10.0;
-    double def_delta = 0.05;
-    double def_occ_thresh = 0.25;
-    double def_llsamplerange = 0.01;
-    double def_llsamplestep = 0.01;
-    double def_lasamplerange = 0.005;
-    double def_lasamplestep = 0.005;
+    // Frame names and basic settings
+    throttle_scans_ = this->declare_parameter("throttle_scans", 1);
+    base_frame_ = this->declare_parameter("base_frame", "base_link");
+    map_frame_ = this->declare_parameter("map_frame", "map");
+    odom_frame_ = this->declare_parameter("odom_frame", "odom");
+    transform_publish_period_ = this->declare_parameter("transform_publish_period", 0.05);
 
-    // Declare parameters so they can be overridden via a YAML file or launch
-    this->declare_parameter<int>("throttle_scans", def_throttle_scans);
-    this->declare_parameter<std::string>("base_frame", def_base_frame);
-    this->declare_parameter<std::string>("map_frame", def_map_frame);
-    this->declare_parameter<std::string>("odom_frame", def_odom_frame);
-    this->declare_parameter<double>("transform_publish_period", def_transform_publish_period);
-    this->declare_parameter<double>("map_update_interval", def_map_update_interval);
-    this->declare_parameter<double>("maxUrange", def_maxUrange);
-    this->declare_parameter<double>("maxRange", def_maxRange);
-    this->declare_parameter<double>("minimum_score", def_minimum_score);
-    this->declare_parameter<double>("sigma", def_sigma);
-    this->declare_parameter<int>("kernelSize", def_kernelSize);
-    this->declare_parameter<double>("lstep", def_lstep);
-    this->declare_parameter<double>("astep", def_astep);
-    this->declare_parameter<int>("iterations", def_iterations);
-    this->declare_parameter<double>("lsigma", def_lsigma);
-    this->declare_parameter<double>("ogain", def_ogain);
-    this->declare_parameter<int>("lskip", def_lskip);
-    this->declare_parameter<double>("srr", def_srr);
-    this->declare_parameter<double>("srt", def_srt);
-    this->declare_parameter<double>("str", def_str);
-    this->declare_parameter<double>("stt", def_stt);
-    this->declare_parameter<double>("linearUpdate", def_linearUpdate);
-    this->declare_parameter<double>("angularUpdate", def_angularUpdate);
-    this->declare_parameter<double>("temporalUpdate", def_temporalUpdate);
-    this->declare_parameter<double>("resampleThreshold", def_resampleThreshold);
-    this->declare_parameter<int>("particles", def_particles);
-    this->declare_parameter<double>("xmin", def_xmin);
-    this->declare_parameter<double>("ymin", def_ymin);
-    this->declare_parameter<double>("xmax", def_xmax);
-    this->declare_parameter<double>("ymax", def_ymax);
-    this->declare_parameter<double>("delta", def_delta);
-    this->declare_parameter<double>("occ_thresh", def_occ_thresh);
-    this->declare_parameter<double>("llsamplerange", def_llsamplerange);
-    this->declare_parameter<double>("llsamplestep", def_llsamplestep);
-    this->declare_parameter<double>("lasamplerange", def_lasamplerange);
-    this->declare_parameter<double>("lasamplestep", def_lasamplestep);
-
-    // Read parameters (overrides defaults if provided via YAML/launch)
-    this->get_parameter("throttle_scans", throttle_scans_);
-    this->get_parameter("base_frame", base_frame_);
-    this->get_parameter("map_frame", map_frame_);
-    this->get_parameter("odom_frame", odom_frame_);
-    this->get_parameter("transform_publish_period", transform_publish_period_);
-    double map_update_interval_sec = def_map_update_interval;
-    this->get_parameter("map_update_interval", map_update_interval_sec);
+    double map_update_interval_sec = this->declare_parameter("map_update_interval", 0.5);
     map_update_interval_ = tf2::durationFromSec(map_update_interval_sec);
 
-    this->get_parameter("maxUrange", maxUrange_);
-    this->get_parameter("maxRange", maxRange_);
-    this->get_parameter("minimum_score", minimum_score_);
-    this->get_parameter("sigma", sigma_);
-    this->get_parameter("kernelSize", kernelSize_);
-    this->get_parameter("lstep", lstep_);
-    this->get_parameter("astep", astep_);
-    this->get_parameter("iterations", iterations_);
-    this->get_parameter("lsigma", lsigma_);
-    this->get_parameter("ogain", ogain_);
-    this->get_parameter("lskip", lskip_);
-    this->get_parameter("srr", srr_);
-    this->get_parameter("srt", srt_);
-    this->get_parameter("str", str_);
-    this->get_parameter("stt", stt_);
-    this->get_parameter("linearUpdate", linearUpdate_);
-    this->get_parameter("angularUpdate", angularUpdate_);
-    this->get_parameter("temporalUpdate", temporalUpdate_);
-    this->get_parameter("resampleThreshold", resampleThreshold_);
-    this->get_parameter("particles", particles_);
-    this->get_parameter("xmin", xmin_);
-    this->get_parameter("ymin", ymin_);
-    this->get_parameter("xmax", xmax_);
-    this->get_parameter("ymax", ymax_);
-    this->get_parameter("delta", delta_);
-    this->get_parameter("occ_thresh", occ_thresh_);
-    this->get_parameter("llsamplerange", llsamplerange_);
-    this->get_parameter("llsamplestep", llsamplestep_);
-    this->get_parameter("lasamplerange", lasamplerange_);
-    this->get_parameter("lasamplestep", lasamplestep_);
+    // Range parameters
+    maxUrange_ = this->declare_parameter("maxUrange", 80.0);
+    maxRange_ = this->declare_parameter("maxRange", 0.0);
+
+    // Scan matching parameters
+    minimum_score_ = this->declare_parameter("minimum_score", 0.0);
+    sigma_ = this->declare_parameter("sigma", 0.05);
+    kernelSize_ = this->declare_parameter("kernelSize", 1);
+    lstep_ = this->declare_parameter("lstep", 0.05);
+    astep_ = this->declare_parameter("astep", 0.05);
+    iterations_ = this->declare_parameter("iterations", 5);
+    lsigma_ = this->declare_parameter("lsigma", 0.075);
+    ogain_ = this->declare_parameter("ogain", 3.0);
+    lskip_ = this->declare_parameter("lskip", 0);
+
+    // Motion model parameters
+    srr_ = this->declare_parameter("srr", 0.1);
+    srt_ = this->declare_parameter("srt", 0.2);
+    str_ = this->declare_parameter("str", 0.1);
+    stt_ = this->declare_parameter("stt", 0.2);
+
+    // Update parameters
+    linearUpdate_ = this->declare_parameter("linearUpdate", 1.0);
+    angularUpdate_ = this->declare_parameter("angularUpdate", 0.5);
+    temporalUpdate_ = this->declare_parameter("temporalUpdate", 1.0);
+    resampleThreshold_ = this->declare_parameter("resampleThreshold", 0.5);
+
+    // Particle filter
+    particles_ = this->declare_parameter("particles", 30);
+
+    // Map parameters
+    xmin_ = this->declare_parameter("xmin", -10.0);
+    ymin_ = this->declare_parameter("ymin", -10.0);
+    xmax_ = this->declare_parameter("xmax", 10.0);
+    ymax_ = this->declare_parameter("ymax", 10.0);
+    delta_ = this->declare_parameter("delta", 0.05);
+    occ_thresh_ = this->declare_parameter("occ_thresh", 0.25);
+
+    // Likelihood sampling
+    llsamplerange_ = this->declare_parameter("llsamplerange", 0.01);
+    llsamplestep_ = this->declare_parameter("llsamplestep", 0.01);
+    lasamplerange_ = this->declare_parameter("lasamplerange", 0.005);
+    lasamplestep_ = this->declare_parameter("lasamplestep", 0.005);
 
     tf_delay_ = transform_publish_period_;
 }
