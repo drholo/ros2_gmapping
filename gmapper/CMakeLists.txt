@@ -18,6 +18,8 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(openslam_gmapping REQUIRED)
+find_package(yaml-cpp REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
@@ -46,12 +48,16 @@ ament_target_dependencies(gmap
         sensor_msgs
         nav_msgs
         tf2_geometry_msgs
-        openslam_gmapping)
+        openslam_gmapping
+        yaml-cpp
+        ament_index_cpp)
+
+target_link_libraries(gmap yaml-cpp)
 
 install(TARGETS gmap
         DESTINATION lib/${PROJECT_NAME})
 
-install(DIRECTORY launch
+install(DIRECTORY launch config
 	    DESTINATION share/${PROJECT_NAME})
 
 ament_package()

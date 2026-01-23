@@ -21,11 +21,15 @@ SlamGmapping::SlamGmapping():
     tfB_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
     map_to_odom_.setIdentity();
     seed_ = static_cast<unsigned long>(time(nullptr));
-    init();
+    
+    // Declare and get config_path parameter
+    std::string config_file = this->declare_parameter("config_file", "config/gmapping_params.yaml");
+    
+    init(config_file);
     startLiveSlam();
 }
 
-void SlamGmapping::init() {
+void SlamGmapping::init(const std::string& config_file) {
     gsp_ = new GMapping::GridSlamProcessor();
 
     gsp_laser_ = nullptr;
@@ -33,59 +37,103 @@ void SlamGmapping::init() {
     got_first_scan_ = false;
     got_map_ = false;
 
-    // Frame names and basic settings
-    throttle_scans_ = this->declare_parameter("throttle_scans", 1);
-    base_frame_ = this->declare_parameter("base_frame", "base_link");
-    map_frame_ = this->declare_parameter("map_frame", "map");
-    odom_frame_ = this->declare_parameter("odom_frame", "odom");
-    transform_publish_period_ = this->declare_parameter("transform_publish_period", 0.05);
+    // Determine the full path to the config file
+    std::string full_config_path;
+    if (config_file[0] == '/' || config_file[0] == '~') {
+        // Absolute path provided
+        full_config_path = config_file;
+    } else {
+        // Relative path - resolve from package share directory
+        try {
+            std::string package_share_dir = ament_index_cpp::get_package_share_directory("gmapper");
+            full_config_path = package_share_dir + "/" + config_file;
+        } catch (const std::exception& e) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to find package share directory: %s", e.what());
+            full_config_path = config_file;
+        }
+    }
 
-    double map_update_interval_sec = this->declare_parameter("map_update_interval", 0.5);
+    // Load parameters from YAML config file
+    YAML::Node config;
+    try {
+        config = YAML::LoadFile(full_config_path);
+        RCLCPP_INFO(this->get_logger(), "Loaded parameters from config file: %s", full_config_path.c_str());
+    } catch (const YAML::Exception& e) {
+        RCLCPP_WARN(this->get_logger(), 
+            "Failed to load config file %s: %s. Using default parameters.",
+            full_config_path.c_str(), e.what());
+        config = YAML::Node();
+    }
+
+    // Helper lambda to get parameter value from YAML with fallback to default
+    auto get_param = [&](const std::string& param_name, const YAML::Node& default_value) {
+        try {
+            if (config["slam_gmapping"] && config["slam_gmapping"]["ros__parameters"]) {
+                YAML::Node param = config["slam_gmapping"]["ros__parameters"][param_name];
+                if (param.IsDefined()) {
+                    return param;
+                }
+            }
+        } catch (const YAML::Exception& e) {
+            RCLCPP_DEBUG(this->get_logger(), "Error reading parameter %s from config: %s",
+                param_name.c_str(), e.what());
+        }
+        return default_value;
+    };
+
+    // Frame names and basic settings
+    throttle_scans_ = get_param("throttle_scans", YAML::Node(1)).as<int>();
+    base_frame_ = get_param("base_frame", YAML::Node("base_link")).as<std::string>();
+    map_frame_ = get_param("map_frame", YAML::Node("map")).as<std::string>();
+    odom_frame_ = get_param("odom_frame", YAML::Node("odom")).as<std::string>();
+    transform_publish_period_ = get_param("transform_publish_period", YAML::Node(0.05)).as<double>();
+
+    double map_update_interval_sec = get_param("map_update_interval", YAML::Node(0.5)).as<double>();
     map_update_interval_ = tf2::durationFromSec(map_update_interval_sec);
 
     // Range parameters
-    maxUrange_ = this->declare_parameter("maxUrange", 80.0);
-    maxRange_ = this->declare_parameter("maxRange", 0.0);
+    maxUrange_ = get_param("maxUrange", YAML::Node(80.0)).as<double>();
+    maxRange_ = get_param("maxRange", YAML::Node(0.0)).as<double>();
 
     // Scan matching parameters
-    minimum_score_ = this->declare_parameter("minimum_score", 0.0);
-    sigma_ = this->declare_parameter("sigma", 0.05);
-    kernelSize_ = this->declare_parameter("kernelSize", 1);
-    lstep_ = this->declare_parameter("lstep", 0.05);
-    astep_ = this->declare_parameter("astep", 0.05);
-    iterations_ = this->declare_parameter("iterations", 5);
-    lsigma_ = this->declare_parameter("lsigma", 0.075);
-    ogain_ = this->declare_parameter("ogain", 3.0);
-    lskip_ = this->declare_parameter("lskip", 0);
+    minimum_score_ = get_param("minimum_score", YAML::Node(0.0)).as<double>();
+    sigma_ = get_param("sigma", YAML::Node(0.05)).as<double>();
+    kernelSize_ = get_param("kernelSize", YAML::Node(1)).as<int>();
+    lstep_ = get_param("lstep", YAML::Node(0.05)).as<double>();
+    astep_ = get_param("astep", YAML::Node(0.05)).as<double>();
+    iterations_ = get_param("iterations", YAML::Node(5)).as<int>();
+    lsigma_ = get_param("lsigma", YAML::Node(0.075)).as<double>();
+    ogain_ = get_param("ogain", YAML::Node(3.0)).as<double>();
+    lskip_ = get_param("lskip", YAML::Node(0)).as<int>();
 
     // Motion model parameters
-    srr_ = this->declare_parameter("srr", 0.1);
-    srt_ = this->declare_parameter("srt", 0.2);
-    str_ = this->declare_parameter("str", 0.1);
-    stt_ = this->declare_parameter("stt", 0.2);
+    srr_ = get_param("srr", YAML::Node(0.1)).as<double>();
+    srt_ = get_param("srt", YAML::Node(0.2)).as<double>();
+    str_ = get_param("str", YAML::Node(0.1)).as<double>();
+    stt_ = get_param("stt", YAML::Node(0.2)).as<double>();
 
     // Update parameters
-    linearUpdate_ = this->declare_parameter("linearUpdate", 1.0);
-    angularUpdate_ = this->declare_parameter("angularUpdate", 0.5);
-    temporalUpdate_ = this->declare_parameter("temporalUpdate", 1.0);
-    resampleThreshold_ = this->declare_parameter("resampleThreshold", 0.5);
+    linearUpdate_ = get_param("linearUpdate", YAML::Node(1.0)).as<double>();
+    angularUpdate_ = get_param("angularUpdate", YAML::Node(0.5)).as<double>();
+    temporalUpdate_ = get_param("temporalUpdate", YAML::Node(1.0)).as<double>();
+    resampleThreshold_ = get_param("resampleThreshold", YAML::Node(0.5)).as<double>();
 
     // Particle filter
-    particles_ = this->declare_parameter("particles", 30);
+    particles_ = get_param("particles", YAML::Node(30)).as<int>();
 
     // Map parameters
-    xmin_ = this->declare_parameter("xmin", -10.0);
-    ymin_ = this->declare_parameter("ymin", -10.0);
-    xmax_ = this->declare_parameter("xmax", 10.0);
-    ymax_ = this->declare_parameter("ymax", 10.0);
-    delta_ = this->declare_parameter("delta", 0.05);
-    occ_thresh_ = this->declare_parameter("occ_thresh", 0.25);
+    xmin_ = get_param("xmin", YAML::Node(-10.0)).as<double>();
+    ymin_ = get_param("ymin", YAML::Node(-10.0)).as<double>();
+    xmax_ = get_param("xmax", YAML::Node(10.0)).as<double>();
+    ymax_ = get_param("ymax", YAML::Node(10.0)).as<double>();
+    delta_ = get_param("delta", YAML::Node(0.05)).as<double>();
+    occ_thresh_ = get_param("occ_thresh", YAML::Node(0.25)).as<double>();
 
     // Likelihood sampling
-    llsamplerange_ = this->declare_parameter("llsamplerange", 0.01);
-    llsamplestep_ = this->declare_parameter("llsamplestep", 0.01);
-    lasamplerange_ = this->declare_parameter("lasamplerange", 0.005);
-    lasamplestep_ = this->declare_parameter("lasamplestep", 0.005);
+    llsamplerange_ = get_param("llsamplerange", YAML::Node(0.01)).as<double>();
+    llsamplestep_ = get_param("llsamplestep", YAML::Node(0.01)).as<double>();
+    lasamplerange_ = get_param("lasamplerange", YAML::Node(0.005)).as<double>();
+    lasamplestep_ = get_param("lasamplestep", YAML::Node(0.005)).as<double>();
 
     tf_delay_ = transform_publish_period_;
 }

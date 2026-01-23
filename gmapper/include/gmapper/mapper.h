@@ -5,6 +5,9 @@
 #include <mutex>
 #include <thread>
 #include <memory>
+#include <string>
+#include <yaml-cpp/yaml.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -31,7 +34,7 @@ public:
     SlamGmapping();
     ~SlamGmapping() override;
 
-    void init();
+    void init(const std::string& config_file = "config/gmapping_params.yaml");
     void startLiveSlam();
     void publishTransform();
     void laserCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr scan);
