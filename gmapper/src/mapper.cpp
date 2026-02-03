@@ -21,6 +21,10 @@ SlamGmapping::SlamGmapping():
     tfB_ = std::make_shared<tf2_ros::TransformBroadcaster>(node_);
     map_to_odom_.setIdentity();
     seed_ = static_cast<unsigned long>(time(nullptr));
+    last_scan_time_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+    have_last_scan_time_ = false;
+    last_tf_publish_time_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+    have_last_tf_publish_time_ = false;
     
     // Declare and get config_path parameter
     std::string config_file = this->declare_parameter("config_file", "config/gmapping_params.yaml");
@@ -419,6 +423,8 @@ void SlamGmapping::laserCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr sca
 
         map_to_odom_mutex_.lock();
         map_to_odom_ = (odom_to_laser * laser_to_map).inverse();
+        last_scan_time_ = scan->header.stamp;
+        have_last_scan_time_ = true;
         map_to_odom_mutex_.unlock();
 
         tf2::TimePoint timestamp = tf2_ros::fromMsg(scan->header.stamp);
@@ -555,9 +561,17 @@ void SlamGmapping::updateMap(const sensor_msgs::msg::LaserScan::ConstSharedPtr s
 
 void SlamGmapping::publishTransform()
 {
+    if (!have_last_scan_time_) {
+        return;
+    }
     map_to_odom_mutex_.lock();
-    rclcpp::Time tf_expiration = get_clock()->now() + rclcpp::Duration(
-            static_cast<int32_t>(static_cast<rcl_duration_value_t>(tf_delay_)), 0);
+    rclcpp::Time base_time = have_last_scan_time_ ? last_scan_time_ : get_clock()->now();
+    if (have_last_tf_publish_time_ && base_time <= last_tf_publish_time_) {
+        base_time = last_tf_publish_time_ + rclcpp::Duration::from_seconds(1e-6);
+    }
+    rclcpp::Time tf_expiration = base_time + rclcpp::Duration::from_seconds(tf_delay_);
+    last_tf_publish_time_ = base_time;
+    have_last_tf_publish_time_ = true;
     geometry_msgs::msg::TransformStamped transform;
     transform.header.frame_id = map_frame_;
     transform.header.stamp = tf_expiration;

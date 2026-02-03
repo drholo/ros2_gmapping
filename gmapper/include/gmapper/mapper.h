@@ -76,6 +76,12 @@ private:
     std::mutex map_to_odom_mutex_;
     std::mutex map_mutex_;
 
+    rclcpp::Time last_scan_time_;
+    bool have_last_scan_time_;
+
+    rclcpp::Time last_tf_publish_time_;
+    bool have_last_tf_publish_time_;
+
     int laser_count_;
     int throttle_scans_;
 
