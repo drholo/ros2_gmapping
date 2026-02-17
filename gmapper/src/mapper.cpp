@@ -395,6 +395,9 @@ void SlamGmapping::laserCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr sca
     if ((laser_count_ % throttle_scans_) != 0)
         return;
 
+    // Store the latest scan timestamp to use in transform publishing
+    last_scan_stamp_ = scan->header.stamp;
+
     tf2::TimePoint last_map_update = tf2::TimePointZero;
 
     // We can't initialize the mapper until we've got the first scan
@@ -556,7 +559,10 @@ void SlamGmapping::updateMap(const sensor_msgs::msg::LaserScan::ConstSharedPtr s
 void SlamGmapping::publishTransform()
 {
     map_to_odom_mutex_.lock();
-    rclcpp::Time tf_expiration = get_clock()->now() + rclcpp::Duration(
+    // Use the timestamp from the latest scan for the transform, not the system clock.
+    // This ensures proper alignment when use_sim_time is enabled (bagfile playback).
+    rclcpp::Time tf_stamp = last_scan_stamp_;
+    rclcpp::Time tf_expiration = tf_stamp + rclcpp::Duration(
             static_cast<int32_t>(static_cast<rcl_duration_value_t>(tf_delay_)), 0);
     geometry_msgs::msg::TransformStamped transform;
     transform.header.frame_id = map_frame_;
